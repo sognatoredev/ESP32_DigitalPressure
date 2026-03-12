@@ -54,7 +54,8 @@ const char* password = "9cf0bkd529";   // WiFi 비밀번호 입력
 #define FILTER_SIZE       10
 
 // ==================== 웹서버 ====================
-WebServer server(80);
+#define WEB_SERVER_PORT   8282    // 비표준 포트 (기본 80 대신 사용)
+WebServer server(WEB_SERVER_PORT);
 
 // ==================== 전역 센서 데이터 (웹 API용) ====================
 volatile float g_pressure      = 0.0f;
@@ -223,9 +224,41 @@ h1{
 .thermo-wrap{position:relative;width:100px;height:250px}
 .thermo-wrap svg{width:100%;height:100%}
 
+/* History Table */
+.history-card{
+  background:rgba(255,255,255,0.05);
+  backdrop-filter:blur(10px);
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:20px;padding:25px;
+  max-width:900px;width:100%;margin-top:30px;
+  box-shadow:0 8px 32px rgba(0,0,0,0.3);
+}
+.history-card .card-title{
+  font-size:0.75rem;text-transform:uppercase;letter-spacing:3px;
+  color:#aaa;margin-bottom:15px;text-align:center;
+}
+.history-table{width:100%;border-collapse:collapse}
+.history-table th{
+  font-size:0.65rem;text-transform:uppercase;letter-spacing:1.5px;
+  color:#888;padding:8px 12px;
+  border-bottom:1px solid rgba(255,255,255,0.1);
+  text-align:center;
+}
+.history-table td{
+  font-size:0.85rem;color:#ddd;padding:7px 12px;
+  border-bottom:1px solid rgba(255,255,255,0.04);
+  text-align:center;font-variant-numeric:tabular-nums;
+}
+.history-table tr:first-child td{color:#fff;font-weight:600}
+.history-table tr:hover td{background:rgba(255,255,255,0.03)}
+.history-table .time-col{color:#999;font-size:0.75rem}
+.no-data{text-align:center;color:#666;padding:20px;font-size:0.8rem}
+
 @media(max-width:680px){
   .dashboard{flex-direction:column;align-items:center}
   .card{min-width:unset;width:100%;max-width:360px}
+  .history-card{padding:15px}
+  .history-table th,.history-table td{padding:5px 6px;font-size:0.75rem}
 }
 </style>
 </head>
@@ -257,6 +290,26 @@ h1{
       <span><span class="label">Unit</span><span class="num">&deg;C</span></span>
     </div>
   </div>
+</div>
+
+<!-- History Table -->
+<div class="history-card">
+  <div class="card-title">Measurement History (Latest 10)</div>
+  <table class="history-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Time</th>
+        <th>Pressure (mbar)</th>
+        <th>Pressure Avg</th>
+        <th>Temp (&deg;C)</th>
+        <th>Temp Avg</th>
+      </tr>
+    </thead>
+    <tbody id="historyBody">
+      <tr><td colspan="6" class="no-data">Waiting for data...</td></tr>
+    </tbody>
+  </table>
 </div>
 
 <div class="status-bar">
@@ -448,6 +501,42 @@ function updateThermometer(value) {
 
 buildThermometer();
 
+// ============ History Table ============
+const MAX_HISTORY = 10;
+const history = [];
+
+function addHistory(d) {
+  const now = new Date();
+  const entry = {
+    time: now.toLocaleTimeString(),
+    pressure: d.pressure,
+    pressureAvg: d.pressureAvg,
+    temperature: d.temperature,
+    temperatureAvg: d.temperatureAvg
+  };
+  history.unshift(entry);
+  if (history.length > MAX_HISTORY) history.pop();
+  renderHistory();
+}
+
+function renderHistory() {
+  const tbody = document.getElementById('historyBody');
+  if (history.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="no-data">Waiting for data...</td></tr>';
+    return;
+  }
+  tbody.innerHTML = history.map((h, i) =>
+    `<tr>
+      <td>${i + 1}</td>
+      <td class="time-col">${h.time}</td>
+      <td>${h.pressure.toFixed(1)}</td>
+      <td>${h.pressureAvg.toFixed(1)}</td>
+      <td>${h.temperature.toFixed(2)}</td>
+      <td>${h.temperatureAvg.toFixed(2)}</td>
+    </tr>`
+  ).join('');
+}
+
 // ============ Data Fetch ============
 let animPressure = 0;
 
@@ -467,6 +556,7 @@ function fetchData() {
       const now = new Date();
       document.getElementById('updateTime').textContent =
         now.toLocaleTimeString() + ' updated';
+      addHistory(d);
     })
     .catch(() => {
       document.getElementById('statusDot').className = 'dot err';
@@ -564,7 +654,7 @@ void setup()
     Serial.println(" Connected!");
     Serial.print("IP Address: ");
     Serial.println(WiFi.localIP());
-    Serial.printf("Open browser: http://%s/\n", WiFi.localIP().toString().c_str());
+    Serial.printf("Open browser: http://%s:%d/\n", WiFi.localIP().toString().c_str(), WEB_SERVER_PORT);
   }
   else
   {
@@ -577,7 +667,7 @@ void setup()
   server.on("/api/data", handleApiData);
   server.onNotFound(handleNotFound);
   server.begin();
-  Serial.println("Web server started on port 80");
+  Serial.printf("Web server started on port %d\n", WEB_SERVER_PORT);
   Serial.println();
 }
 
