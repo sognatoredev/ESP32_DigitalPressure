@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /c/00.Work/01.Project/02.ESP32_RTOS_Study/ESP32_DigitalPressure -type f ! -path '*.git*' -exec file {})"
+    ]
+  }
+}
